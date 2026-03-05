@@ -1,0 +1,838 @@
+// ----------------------------------------------------------
+// auth.js
+// Handles login/signup UI, habits & events modals, stats, and calendar integration.
+// ----------------------------------------------------------
+import { getJSONData }   from './loginGet.js?v=1';
+import { putJSONData }   from './loginPut.js?v=1';
+import { getHabitsJSON } from './habitsGet.js?v=1';
+import { putHabits }     from './habitsPut.js?v=1';
+import { getEventsJSON } from './eventsGet.js?v=1';
+import { putEvents }     from './eventsPut.js?v=1';
+
+// ----------------------------------------------------------
+// GLOBAL VARIABLES
+// ----------------------------------------------------------
+const authArea   = document.getElementById('authArea');
+const authModals = document.getElementById('authModals');
+//COLOR CODES FOR CATEGORIES CONSTANT
+const CATEGORY_COLORS = {
+  Productivity: "#215fff", 
+  Health: "#00c853",      
+  Other: "#ffab00"         
+};
+
+// APP STATE VARIABLES, STORES CURRENT CLICKED HABIT / EVENT AND CHART INSTANCE
+let currentClickedHabit = null;
+let statsChartInstance = null;
+let currentClickedEvent = null;
+
+// ----------------------------------------------------------
+// MODALS BEGIN HERE
+// ----------------------------------------------------------
+// LOGIN & SIGNUP MODALS
+// ----------------------------------------------------------
+authModals.innerHTML = `
+  <!-- LOGIN -->
+  <div class="modal" id="loginModal" aria-hidden="true">
+    <div class="card" role="dialog" aria-modal="true" aria-labelledby="loginTitle">
+      <button class="close" id="loginClose" aria-label="Close">×</button>
+      <h2 id="loginTitle">Login</h2>
+      <div class="field">
+        <label for="loginUser">Username</label>
+        <input id="loginUser" autocomplete="username">
+      </div>
+      <div class="field">
+        <label for="loginPass">Password</label>
+        <input id="loginPass" type="password" autocomplete="current-password">
+      </div>
+      <div class="error" id="loginError"></div>
+      <div class="row">
+        <button class="btn" id="loginSubmit">Login</button>
+        <button class="btn-ghost" id="toSignup">Create account</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- SIGNUP -->
+  <div class="modal" id="signupModal" aria-hidden="true">
+    <div class="card" role="dialog" aria-modal="true" aria-labelledby="signupTitle">
+      <button class="close" id="signupClose" aria-label="Close">×</button>
+      <h2 id="signupTitle">Create Account</h2>
+      <div class="field">
+        <label for="suUser">Username</label>
+        <input id="suUser" autocomplete="username">
+      </div>
+      <div class="field">
+        <label for="suPass">Password</label>
+        <input id="suPass" type="password" autocomplete="new-password">
+      </div>
+      <div class="error" id="signupError"></div>
+      <div class="row">
+        <button class="btn" id="signupSubmit">Create</button>
+        <button class="btn-ghost" id="toLogin">I have an account</button>
+      </div>
+    </div>
+  </div>
+`;
+
+// ----------------------------------------------------------
+// ADD HABIT MODAL
+// ----------------------------------------------------------
+authModals.innerHTML += `
+  <div class="modal" id="habitModal" aria-hidden="true">
+    <div class="card" role="dialog" aria-modal="true" aria-labelledby="habitTitle">
+      <button class="close" id="habitClose" aria-label="Close">×</button>
+      <h2 id="habitTitle">Add Habit</h2>
+
+      <div class="field">
+        <label for="habitName">Habit name</label>
+        <input id="habitName" placeholder="e.g., Make bed">
+      </div>
+
+      <div class="field">
+        <label for="habitCategory">Category</label>
+        <select id="habitCategory">
+          <option value="">Choose a category</option>
+          <option value="Productivity">Productivity</option>
+          <option value="Health">Health</option>
+          <option value="Other">Other</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label for="habitTime">Time</label>
+        <input id="habitTime" type="time">
+      </div>
+
+      <div class="error" id="habitError"></div>
+
+      <div class="row">
+        <button class="btn" id="habitSave">Save</button>
+        <button class="btn-ghost" id="habitCancel">Cancel</button>
+      </div>
+    </div>
+  </div>
+`;
+
+// ----------------------------------------------------------
+// ADD EVENT MODAL
+// ----------------------------------------------------------
+authModals.innerHTML += `
+  <div class="modal" id="eventModal" aria-hidden="true">
+    <div class="card" role="dialog" aria-modal="true" aria-labelledby="eventTitle">
+      <button class="close" id="eventClose" aria-label="Close">×</button>
+      <h2 id="eventTitle">Add Event</h2>
+
+      <div class="field">
+        <label for="eventName">Event title</label>
+        <input id="eventName" placeholder="e.g., Doctor appointment">
+      </div>
+
+      <div class="field">
+        <label for="eventDate">Date</label>
+        <input id="eventDate" type="date">
+      </div>
+
+      <div class="field">
+        <label for="eventTime">Time (optional)</label>
+        <input id="eventTime" type="time">
+      </div>
+
+      <div class="error" id="eventError"></div>
+
+      <div class="row">
+        <button class="btn" id="eventSave">Save</button>
+        <button class="btn-ghost" id="eventCancel">Cancel</button>
+      </div>
+    </div>
+  </div>
+`;
+
+// ----------------------------------------------------------
+// POPULATE HABIT ACTION MODAL
+// ----------------------------------------------------------
+authModals.innerHTML += `
+  <div class="modal" id="habitActionModal" aria-hidden="true">
+    <div class="card" role="dialog" aria-modal="true" aria-labelledby="habitActionTitle">
+      <button class="close" id="habitActionClose" aria-label="Close">×</button>
+      <h2 id="habitActionTitle">Habit</h2>
+      <p id="habitActionLabel">What do you want to do with this habit?</p>
+      <div class="row">
+        <button class="btn" id="habitDeleteBtn">Delete</button>
+        <button class="btn-ghost" id="habitEditBtn">Edit</button>
+        <button class="btn-ghost" id="habitActionCancel">Cancel</button>
+      </div>
+    </div>
+  </div>
+`;
+
+// ----------------------------------------------------------
+// EVENT ACTION MODAL
+// ----------------------------------------------------------
+authModals.innerHTML += `
+  <div class="modal" id="eventActionModal" aria-hidden="true">
+    <div class="card" role="dialog" aria-modal="true" aria-labelledby="eventActionTitle">
+      <button class="close" id="eventActionClose" aria-label="Close">×</button>
+      <h2 id="eventActionTitle">Event</h2>
+      <p id="eventActionLabel">What do you want to do with this event?</p>
+      <div class="row">
+        <button class="btn" id="eventDeleteBtn">Delete</button>
+        <button class="btn-ghost" id="eventEditBtn">Edit</button>
+        <button class="btn-ghost" id="eventActionCancel">Cancel</button>
+      </div>
+    </div>
+  </div>
+`;
+
+// ----------------------------------------------------------
+// STATS MODAL
+// ----------------------------------------------------------
+authModals.innerHTML += `
+  <div class="modal" id="statsModal" aria-hidden="true">
+    <div class="card" role="dialog" aria-modal="true" aria-labelledby="statsTitle">
+      <button class="close" id="statsClose" aria-label="Close">×</button>
+      <h2 id="statsTitle">Habit Stats</h2>
+      <p>Habits by category (current user)</p>
+      <div style="width:100%;max-width:420px;">
+        <canvas id="statsCanvas"></canvas>
+      </div>
+    </div>
+  </div>
+`;
+
+// ----------------------------------------------------------
+// MODALS END HERE
+// ----------------------------------------------------------
+// MODAL HELPERS
+// ----------------------------------------------------------
+function openModal(id, focusId) {
+  const m = document.getElementById(id);
+  if (!m) return;
+  m.classList.add('open');
+  document.body.style.overflow = 'hidden';
+  if (focusId) document.getElementById(focusId)?.focus();
+}
+
+function closeModal(id) {
+  document.getElementById(id)?.classList.remove('open');
+  document.body.style.overflow = '';
+}
+
+// ----------------------------------------------------------
+// CLOSE BUTTON HANDLERS
+// ----------------------------------------------------------
+document.getElementById('loginClose')?.addEventListener('click', () => closeModal('loginModal'));
+document.getElementById('signupClose')?.addEventListener('click', () => closeModal('signupModal'));
+document.getElementById('habitClose')?.addEventListener('click', () => closeModal('habitModal'));
+document.getElementById('habitCancel')?.addEventListener('click', () => closeModal('habitModal'));
+document.getElementById('eventClose')?.addEventListener('click', () => closeModal('eventModal'));
+document.getElementById('eventCancel')?.addEventListener('click', () => closeModal('eventModal'));
+document.getElementById('habitActionClose')?.addEventListener('click', () => closeModal('habitActionModal'));
+document.getElementById('habitActionCancel')?.addEventListener('click', () => closeModal('habitActionModal'));
+document.getElementById('statsClose')?.addEventListener('click', () => closeModal('statsModal'));
+document.getElementById('eventActionClose')?.addEventListener('click', () => closeModal('eventActionModal'));
+document.getElementById('eventActionCancel')?.addEventListener('click', () => closeModal('eventActionModal'));
+document.getElementById('toSignup')?.addEventListener('click', () => {
+  closeModal('loginModal');
+  openModal('signupModal', 'suUser');
+});
+document.getElementById('toLogin')?.addEventListener('click', () => {
+  closeModal('signupModal');
+  openModal('loginModal', 'loginUser');
+});
+
+// ----------------------------------------------------------
+// DATE ACCURACY HELPERS
+// ----------------------------------------------------------
+function getTodayDateISO() {
+  const t = new Date();
+  const y = t.getFullYear();
+  const m = String(t.getMonth() + 1).padStart(2, '0');
+  const day = String(t.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+// ----------------------------------------------------------
+// UPDATE CSS STATS CARDS (EXTRA FEATURE)
+// ----------------------------------------------------------
+async function updateStatsCards() {
+  const currentUser = localStorage.getItem('currentUser');
+  if (!currentUser) return;
+
+  try {
+    const habits = JSON.parse(await getHabitsJSON());
+    const userHabits = habits.filter(h => h.userName === currentUser);
+
+    const total  = userHabits.length;
+    const prod   = userHabits.filter(h => h.category === 'Productivity').length;
+    const health = userHabits.filter(h => h.category === 'Health').length;
+    const other  = userHabits.filter(
+      h => h.category === 'Other' || !h.category
+    ).length;
+
+    const totalEl  = document.getElementById('totalHabitsCount');
+    const prodEl   = document.getElementById('productivityHabitsCount');
+    const healthEl = document.getElementById('healthHabitsCount');
+    const otherEl  = document.getElementById('otherHabitsCount');
+
+    if (totalEl)  totalEl.textContent  = total;
+    if (prodEl)   prodEl.textContent   = prod;
+    if (healthEl) healthEl.textContent = health;
+    if (otherEl)  otherEl.textContent  = other;
+
+  } catch (err) {
+    console.error('Failed to update stats cards', err);
+  }
+}
+
+// ----------------------------------------------------------
+// LOAD HABITS TO CALENDAR
+// - Clears existing habit events from FullCalendar.
+// - Loads the current user's habits from JSONBin.
+// - Adds each habit as a 'habit' event to the calendar.
+// ----------------------------------------------------------
+window.loadHabitsToCalendar = async function () {
+  const cal = window.appCalendar;
+  if (!cal) return;
+
+  const currentUser = localStorage.getItem('currentUser');
+  if (!currentUser) return;
+
+  // PREVENTS DUPLICATE HABIT EVENTS
+  cal.getEvents().forEach(ev => {
+    if (ev.extendedProps && ev.extendedProps.kind === 'habit') {
+      ev.remove();
+    }
+  });
+
+  try {
+    const habits = JSON.parse(await getHabitsJSON());
+    const userHabits = habits.filter(h => h.userName === currentUser);
+
+    userHabits.forEach(h => {
+      // HABIT DATE & TIME HANDLING
+      const date = h.date || getTodayDateISO();
+      const start = h.time ? `${date}T${h.time}` : date;
+
+      cal.addEvent({
+        id: h.id,
+        title: h.name,
+        start,
+        allDay: !h.time,
+        extendedProps: {
+          kind: 'habit',
+          habitId: h.id,
+          category: h.category || ''
+        },
+        color:
+          h.category === 'Productivity' ? '#215fff' :
+          h.category === 'Health'       ? '#00c853' :
+                                          '#ffab00'
+      });
+    });
+
+  } catch (err) {
+    console.error('Could not load habits for calendar', err);
+  }
+};
+
+// ----------------------------------------------------------
+// LOAD EVENTS TO CALENDAR
+// - Clears existing manual events from FullCalendar.
+// - Loads THIS USER'S manual events from JSONBin.
+// - Adds each manual event to the calendar as a 'manual' event.
+// ----------------------------------------------------------
+window.loadEventsToCalendar = async function () {
+  const cal = window.appCalendar;
+  if (!cal) return;
+
+  const currentUser = localStorage.getItem('currentUser');
+  if (!currentUser) return;
+
+  try {
+    const events = JSON.parse(await getEventsJSON());
+
+    // PREVENTS DUPLICATE MANUAL EVENTS
+    cal.getEvents().forEach(ev => {
+      if (ev.extendedProps && ev.extendedProps.kind === 'manual') {
+        ev.remove();
+      }
+    });
+
+    // EVENTS FILTERED BY CURRENT USER  
+    const userEvents = events.filter(e => e.userName === currentUser);
+
+    userEvents.forEach(e => {
+      const start = e.time ? `${e.date}T${e.time}` : e.date;
+
+      cal.addEvent({
+        id: e.id,
+        title: e.title,
+        start,
+        allDay: !e.time,
+        extendedProps: {
+          kind: 'manual'
+        },
+        color: '#ef4444',
+        classNames: ['manual-event']
+      });
+    });
+  } catch (err) {
+    console.error('Could not load manual events', err);
+  }
+};
+
+
+// ----------------------------------------------------------
+// LOGIN AUTH STATE CONSUMPTION
+// ----------------------------------------------------------
+function renderAuthArea() {
+  const current = localStorage.getItem('currentUser');
+
+  if (!current) {
+    authArea.innerHTML = `
+      <button class="btn" id="openLogin">Login</button>
+      <button class="btn" id="openSignup">Create Account</button>`;
+
+    document.getElementById('openLogin')?.addEventListener('click', () =>
+      openModal('loginModal', 'loginUser')
+    );
+    document.getElementById('openSignup')?.addEventListener('click', () =>
+      openModal('signupModal', 'suUser')
+    );
+
+  } else {
+    authArea.innerHTML = `
+      <span>Welcome, <strong>${current}</strong></span>
+      <button class="btn" id="addHabitBtn">Add Habit</button>
+      <button class="btn" id="addEventBtn">Add Event</button>
+      <button class="btn" id="statsBtn">Stats</button>
+      <button class="btn-ghost" id="logoutBtn">Logout</button>`;
+
+    document.getElementById('logoutBtn')?.addEventListener('click', () => {
+      localStorage.removeItem('currentUser');
+
+      const cal = window.appCalendar;
+      if (cal) {
+        // PREVENTS DUPLICATE EVENTS ON LOGOUT IMPORTANT!
+        cal.removeAllEvents();
+      }
+
+      renderAuthArea();
+    });
+
+    document.getElementById('addHabitBtn')?.addEventListener('click', () =>
+      openModal('habitModal', 'habitName')
+    );
+
+    document.getElementById('addEventBtn')?.addEventListener('click', () => {
+      const today = getTodayDateISO();
+      const dateInput = document.getElementById('eventDate');
+      if (dateInput) dateInput.value = today;
+      openModal('eventModal', 'eventName');
+    });
+
+    document.getElementById('statsBtn')?.addEventListener('click', () => {
+      showStatsForCurrentUser();
+    });
+
+    // load habits per login user
+    if (typeof window.loadHabitsToCalendar === 'function') {
+      window.loadHabitsToCalendar();
+    }
+    // update CSS stat cards
+    updateStatsCards();
+  }
+}
+
+// ----------------------------------------------------------
+// STATS: PIE CHART BY CATEGORY 
+// ----------------------------------------------------------
+async function showStatsForCurrentUser() {
+  const currentUser = localStorage.getItem('currentUser');
+  if (!currentUser) return;
+
+  try {
+    const habits = JSON.parse(await getHabitsJSON());
+    const userHabits = habits.filter(h => h.userName === currentUser);
+    const counts = {}; // COUNT BY CATEGORY
+
+    userHabits.forEach(habit => {
+      const cat = habit.category || 'Other';
+      counts[cat] = (counts[cat] || 0) + 1;
+    });
+
+    if (Object.keys(counts).length === 0) {
+      alert('You have no habits yet. Add some to see stats!');
+      return;
+    }
+
+    // OPEN MODAL AND RENDER CHART
+    openModal('statsModal');
+
+    const canvas = document.getElementById('statsCanvas');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+
+    if (statsChartInstance) {
+      statsChartInstance.destroy();
+    }
+
+    const orderedLabels = ['Productivity', 'Health', 'Other'];
+    const labels = orderedLabels.filter(label => counts[label] > 0);
+    const data   = labels.map(label => counts[label]);
+    const colors = labels.map(label => CATEGORY_COLORS[label] || '#7e57c2');
+
+    statsChartInstance = new Chart(ctx, {
+      type: 'pie',
+      data: {
+        labels,
+        datasets: [{
+          data,
+          backgroundColor: colors
+        }]
+      },
+      options: {
+        plugins: {
+          legend: {
+            position: 'bottom'
+          }
+        }
+      }
+    });
+
+  } catch (err) {
+    console.error('Failed to load stats', err);
+    alert('Could not load stats. Check console for details.');
+  }
+}
+
+
+// ----------------------------------------------------------
+// CREATE ACCOUNT
+// ----------------------------------------------------------
+document.getElementById('signupSubmit')?.addEventListener('click', async () => {
+  const user = document.getElementById('suUser').value.trim();
+  const pass = document.getElementById('suPass').value;
+  const errorEl = document.getElementById('signupError');
+
+  if (!user || !pass) {
+    errorEl.textContent = 'Please fill all fields.';
+    return;
+  }
+
+  try {
+    const users = JSON.parse(await getJSONData());
+    if (users.find(u => u.userName === user)) {
+      errorEl.textContent = 'Username already exists.';
+      document.getElementById('suUser').focus();
+      return;
+    }
+    users.push({
+      id: crypto.randomUUID?.() ?? String(Date.now()),
+      userName: user,
+      password: pass
+    });
+    await putJSONData(users);
+    localStorage.setItem('currentUser', user);
+    errorEl.textContent = '';
+    closeModal('signupModal');
+    renderAuthArea();
+  } catch (e) {
+    errorEl.textContent = 'Signup failed. Try again.';
+    console.error(e);
+  }
+});
+
+// ----------------------------------------------------------
+// LOGIN AUTH STATE CREATION
+// ----------------------------------------------------------
+document.getElementById('loginSubmit')?.addEventListener('click', async () => {
+  const user = document.getElementById('loginUser').value.trim();
+  const pass = document.getElementById('loginPass').value;
+  const errorEl = document.getElementById('loginError');
+
+  try {
+    const users = JSON.parse(await getJSONData());
+    const found = users.find(u => u.userName === user && u.password === pass);
+    if (found) {
+      localStorage.setItem('currentUser', user);
+      errorEl.textContent = '';
+      closeModal('loginModal');
+      renderAuthArea();
+    } else {
+      errorEl.textContent = 'Incorrect Login. Try Again';
+      document.getElementById('loginUser').focus();
+    }
+  } catch (e) {
+    errorEl.textContent = 'Login failed. Try again.';
+    console.error(e);
+  }
+});
+
+// ----------------------------------------------------------
+// HABIT CREATION AND STORAGE
+// - Validates habit input form.
+// - Saves a new habit for the current user to JSONBin.
+// - Adds the habit to FullCalendar as a 'habit' event.
+// - Updates habit statistics after saving.
+// ----------------------------------------------------------
+document.getElementById('habitSave')?.addEventListener('click', async () => {
+  const nameEl = document.getElementById('habitName');
+  const catEl  = document.getElementById('habitCategory');
+  const timeEl = document.getElementById('habitTime');
+  const errEl  = document.getElementById('habitError');
+  const name     = nameEl.value.trim();
+  const category = catEl.value;
+  const time     = timeEl.value;
+
+  if (!name) {
+    errEl.textContent = 'Please enter a habit name.';
+    nameEl.focus();
+    return;
+  }
+  if (!category) {
+    errEl.textContent = 'Please choose a category.';
+    catEl.focus();
+    return;
+  }
+
+  try {
+    // 1) Load existing habits from JSONBin
+    const currentUser = localStorage.getItem('currentUser') || 'anonymous';
+    const arr = JSON.parse(await getHabitsJSON());
+
+    // prevent duplicates 
+    if (arr.some(h => h.userName === currentUser && h.name.toLowerCase() === name.toLowerCase())) {
+      errEl.textContent = 'You already have a habit with that name.';
+      return;
+    }
+
+    const newHabit = {
+      id: crypto.randomUUID?.() ?? String(Date.now()),
+      userName: currentUser,
+      name,
+      category,
+      time,
+      date: getTodayDateISO(),   
+      active: true,
+      createdAt: new Date().toISOString()
+    };
+    // 2) Save back to JSONBin
+    arr.push(newHabit);
+    await putHabits(arr);
+
+    errEl.textContent = '';
+    nameEl.value = '';
+    catEl.value  = '';
+    timeEl.value = '';
+    closeModal('habitModal');
+
+    // 3) Add to calendar
+    const cal = window.appCalendar;
+    if (cal) {
+      const date = newHabit.date;
+      const start = newHabit.time ? `${date}T${newHabit.time}` : date;
+
+      cal.addEvent({
+        id: newHabit.id,
+        title: newHabit.name,
+        start,
+        allDay: !newHabit.time,
+        extendedProps: {
+          kind: 'habit',
+          habitId: newHabit.id,
+          category: newHabit.category || ''
+        },
+        color:
+          newHabit.category === 'Productivity' ? '#215fff' :
+          newHabit.category === 'Health'       ? '#00c853' :
+                                                '#ffab00'
+      });
+    }
+
+    updateStatsCards();
+
+  } catch (e) {
+    errEl.textContent = 'Save failed. Check console.';
+    console.error(e);
+  }
+});
+
+// ----------------------------------------------------------
+// MANUAL EVENT CREATION AND STORAGE
+// - Validates event input form.
+// - Saves a new manual event to JSONBin storage .
+// - Adds the event to FullCalendar UI immediately.
+// ----------------------------------------------------------
+document.getElementById('eventSave')?.addEventListener('click', async () => {
+  const nameEl = document.getElementById('eventName');
+  const dateEl = document.getElementById('eventDate');
+  const timeEl = document.getElementById('eventTime');
+  const errEl  = document.getElementById('eventError');
+  const title  = nameEl.value.trim();
+  const date   = dateEl.value;
+  const time   = timeEl.value;
+
+  if (!title) {
+    errEl.textContent = 'Please enter an event title.';
+    nameEl.focus();
+    return;
+  }
+  if (!date) {
+    errEl.textContent = 'Please choose a date.';
+    dateEl.focus();
+    return;
+  }
+
+  const cal = window.appCalendar;
+  if (!cal) {
+    errEl.textContent = 'Calendar not ready.';
+    return;
+  }
+
+  try {
+    // 1) Load existing events from JSONBin
+    const arr = JSON.parse(await getEventsJSON());
+    const currentUser = localStorage.getItem('currentUser') || 'anonymous';
+
+    const newEvent = {
+      id: crypto.randomUUID?.() ?? String(Date.now()),
+      userName: currentUser,        // <<< NEW: event belongs to this user
+      title,
+      date,
+      time,
+      createdAt: new Date().toISOString()
+    };
+
+    // 2) Save back to JSONBin
+    arr.push(newEvent);
+    await putEvents(arr);
+
+    // 3) Add to calendar 
+    const start = time ? `${date}T${time}` : date;
+
+    cal.addEvent({
+      id: newEvent.id,
+      title: newEvent.title,
+      start,
+      allDay: !time,
+      extendedProps: {
+        kind: 'manual'
+      },
+      color: '#ef4444',
+      classNames: ['manual-event']
+    });
+
+    // 4) Clear & close
+    errEl.textContent = '';
+    nameEl.value = '';
+    timeEl.value = '';
+    closeModal('eventModal');
+
+  } catch (e) {
+    console.error('Event save failed', e);
+    errEl.textContent = 'Save failed. Check console.';
+  }
+});
+
+
+// ----------------------------------------------------------
+// HABIT DELETE
+// - Removes the selected habit from JSONBin storage
+//   and deletes its calendar entry from FullCalendar.
+// - Also updates habit statistics after deletion.
+// ---------------------------------------------------------- 
+document.getElementById('habitDeleteBtn')?.addEventListener('click', async () => {
+  if (!currentClickedHabit) {
+    closeModal('habitActionModal');
+    return;
+  }
+  const { habitId, event } = currentClickedHabit;
+
+  try {
+    const habits = JSON.parse(await getHabitsJSON());
+    const newHabits = habits.filter(h => h.id !== habitId);
+    await putHabits(newHabits);
+  } catch (err) {
+    console.error('Failed to delete habit from server', err);
+    alert('Could not delete habit from storage.');
+    return;
+  }
+  event.remove();
+  currentClickedHabit = null;
+  closeModal('habitActionModal');
+
+  updateStatsCards();
+});
+
+// ----------------------------------------------------------
+// MANUAL EVENT DELETE
+// - Deletes the selected manual event from JSONBin storage
+//   and removes it from the calendar UI.
+// ----------------------------------------------------------
+document.getElementById('eventDeleteBtn')?.addEventListener('click', async () => {
+  if (!currentClickedEvent) {
+    closeModal('eventActionModal');
+    return;
+  }
+  // STATE VARIABLES
+  const { eventId, event } = currentClickedEvent;
+
+  try {
+    const events = JSON.parse(await getEventsJSON());
+    const updated = events.filter(e => e.id !== eventId);
+    await putEvents(updated);
+  } catch (err) {
+    console.error('Failed to delete event from server', err);
+    alert('Could not delete event from storage.');
+    return;
+  }
+
+  event.remove();
+  currentClickedEvent = null;
+  closeModal('eventActionModal');
+});
+
+
+// ----------------------------------------------------------
+// CALENDAR EVENT CLICK HANDLER
+// - Routes clicks to the correct modal and stores which
+//   habit/event is currently selected for edit/delete.
+// ----------------------------------------------------------
+window.handleCalendarEventClick = async function (info) {
+  const ev = info.event;
+  const props = ev.extendedProps || {};
+
+  // HABITS
+  if (props.kind === 'habit') {
+    currentClickedHabit = {
+      event: ev,
+      habitId: props.habitId || ev.id,
+      title: ev.title
+    };
+    const label = document.getElementById('habitActionLabel');
+    if (label) {
+      label.textContent = `What do you want to do with “${ev.title}”?`;
+    }
+    openModal('habitActionModal');
+    return;
+  }
+
+  // MANUAL EVENTS
+  if (props.kind === 'manual') {
+    currentClickedEvent = {
+      event: ev,
+      eventId: ev.id,
+      title: ev.title
+    };
+    const label = document.getElementById('eventActionLabel');
+    if (label) {
+      label.textContent = `What do you want to do with “${ev.title}”?`;
+    }
+    openModal('eventActionModal');
+    return;
+  }
+};
+
+renderAuthArea();
